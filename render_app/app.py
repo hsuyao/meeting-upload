@@ -727,7 +727,17 @@ def api_create_job():
     job_id = str(uuid.uuid4())[:8]
     saved_name = f"{job_id}.{ext}"
     save_path = UPLOAD_DIR / saved_name
-    audio.save(save_path)
+
+    # Non-blocking write to avoid blocking the request handler on slow disks
+    import threading
+    def _write_async(stream, path):
+        with open(path, 'wb') as f:
+            while True:
+                chunk = stream.read(8192)
+                if not chunk:
+                    break
+                f.write(chunk)
+    threading.Thread(target=_write_async, args=(audio.stream, save_path), daemon=True).start()
 
     job = create_job(saved_name, source="upload")
     job["original_name"] = request.form.get("original_name", audio.filename)
