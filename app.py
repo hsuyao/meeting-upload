@@ -15,6 +15,7 @@ from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
+from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, render_template_string
 
 app = Flask(__name__)
@@ -38,23 +39,88 @@ try:
 except FileNotFoundError:
     JOBS_FILE = Path("./jobs.json")
 
-APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "$2b$12$TaXboLwNVaLpBtjeHktW7evT0rkevAPAkCm1q3H968eio8NFtxJSe")  # bcrypt hash of Qq8yjjhcb1
+APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "")
 
 # ==========================================
-# 簡易密碼驗證（bcrypt）
+# 密碼驗證（bcrypt）+ 裝飾器
 # ==========================================
+
+# 不需要密碼的路徑（純健康檢查）
+APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "")
+
+# 多帳號系統：{ "eric": "bcrypt_hash", "bob": "bcrypt_hash" }
+# 環境變數 USERS_JSON 是 JSON 字串
+def load_users():
+    """從環境變數載入帳號列表"""
+    users_raw = os.environ.get("USERS_JSON", "")
+    if not users_raw:
+        # 找不到 USERS_JSON，回兼單一帳號舊格式
+        if APP_PASSWORD_HASH:
+            return {"": APP_PASSWORD_HASH}
+        return {}
+    import json
+    try:
+        return json.loads(users_raw)
+    except Exception:
+        return {}
+
+USERS = load_users()
 
 def check_password():
-    """檢查 X-App-Password header，支援 bcrypt hash"""
-    if not APP_PASSWORD_HASH:
-        return True  # 沒設定密碼就放行
-    pwd = request.headers.get("X-App-Password", "")
-    return bcrypt.checkpw(pwd.encode(), APP_PASSWORD_HASH.encode())
+    """檢查 X-App-Password header，比對 bcrypt hash"""
+    if request.path in PUBLIC_PATHS:
+        return True  # 公開路徑不需要密碼
+    if not USERS:
+        return True  # 沒設定帳號就放行
+    # 支援兩種 header 格式：
+    #  X-App-Password: password（舊格式，空白帳號）
+    #  X-Username: user\nX-App-Password: password（新格式）
+    username = request.headers.get("X-Username", "")
+    password = request.headers.get("X-App-Password", "")
+    # 舊格式：只有 X-App-Password，對空白帳號
+    if not username and password:
+        expected = USERS.get("", USERS.get("_default", ""))
+        if expected:
+            try:
+                return bcrypt.checkpw(password.encode(), expected.encode())
+            except Exception:
+                pass
+        # 向下兼容：直接把 password 當成單一密碼比對
+        if APP_PASSWORD_HASH:
+            try:
+                return bcrypt.checkpw(password.encode(), APP_PASSWORD_HASH.encode())
+            except Exception:
+                pass
+        return False
+    # 新格式
+    user_hash = USERS.get(username, "")
+    if not user_hash:
+        return False
+    try:
+        return bcrypt.checkpw(password.encode(), user_hash.encode())
+    except Exception:
+        return False
 
-def require_password():
-    """若密碼錯誤回傳 401"""
+def require_password(f):
+    """裝飾器：若密碼錯誤，回傳 401 兼 JSON（讓前端知道要跳出登入頁）"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not check_password():
+            return jsonify({"error": "需要密碼", "code": "auth_required"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+@app.before_request
+def enforce_password():
+    """所有請求都要檢查密碼，401 时回 JSON（不是 HTML）"""
+    if request.method == "OPTIONS":
+        return  # 讓 CORS 通過
+    if request.path in PUBLIC_PATHS:
+        return  # 公開路徑
     if not check_password():
-        return jsonify({"error": "需要密碼"}), 401
+        resp = jsonify({"error": "需要密碼", "code": "auth_required"})
+        resp.status_code = 401
+        return resp
 
 # ==========================================
 # Job 管理
@@ -220,9 +286,10 @@ INDEX_HTML = """
 </head>
 <body>
 
-<!-- 密碼鎖 -->
+<!-- 帳號登入 -->
 <div id="lockScreen">
-  <h2>🔒 輸入密碼</h2>
+  <h2>🔒 會議錄音系統</h2>
+  <input type="text" id="usernameInput" placeholder="帳號" onkeydown="if(event.key==='Tab'){event.preventDefault();document.getElementById('pwdInput').focus()}">
   <input type="password" id="pwdInput" placeholder="密碼" onkeydown="if(event.key==='Enter')tryLogin()">
   <button onclick="tryLogin()">進入</button>
   <p id="lockError"></p>
@@ -231,53 +298,101 @@ INDEX_HTML = """
 <div id="appContent" style="display:none;"></div>
 
 <script>
+let APP_USERNAME = '';
 let APP_PASSWORD = '';
 let UNLOCKED = false;
 
 function tryLogin() {
+  const username = document.getElementById('usernameInput').value.trim();
   const pwd = document.getElementById('pwdInput').value;
-  if (!pwd) return;
+  if (!username || !pwd) return;
   fetch('/api/jobs?limit=1', {
-    headers: { 'X-App-Password': pwd }
+    headers: { 'X-Username': username, 'X-App-Password': pwd }
   }).then(r => {
     if (r.ok) {
+      APP_USERNAME = username;
       APP_PASSWORD = pwd;
-      localStorage.setItem('app_pwd', pwd);
+      localStorage.setItem('app_cred', JSON.stringify({u: username, p: pwd}));
       UNLOCKED = true;
       document.getElementById('lockScreen').style.display = 'none';
       initApp();
     } else {
-      document.getElementById('lockError').textContent = '密碼錯誤';
+      document.getElementById('lockError').textContent = '帳號或密碼錯誤';
     }
   }).catch(() => {
     document.getElementById('lockError').textContent = '連線失敗';
   });
 }
 
-function initApp() {
-  // 啟動輪詢等
-  loadHistory();
-  setInterval(loadHistory, 15000);
+// ==========================================
+// 強制的密碼檢查：每次頁面可見或 API 401 都重新驗證
+// ==========================================
+
+function doLock() {
+  APP_USERNAME = '';
+  APP_PASSWORD = '';
+  UNLOCKED = false;
+  localStorage.removeItem('app_cred');
+  document.getElementById('lockScreen').style.display = 'flex';
+  document.getElementById('appContent').style.display = 'none';
+  document.getElementById('pwdInput').value = '';
+  document.getElementById('lockError').textContent = '請重新登入';
 }
 
-const savedPwd = localStorage.getItem('app_pwd');
-if (savedPwd) {
-  document.getElementById('pwdInput').value = savedPwd;
-  // 先驗證存過的密碼
-  fetch('/api/jobs?limit=1', { headers: { 'X-App-Password': savedPwd } })
-    .then(r => { if (r.ok) { APP_PASSWORD = savedPwd; UNLOCKED = true; document.getElementById('lockScreen').style.display = 'none'; initApp(); } });
+function verifyPassword(username, pwd) {
+  return fetch('/api/jobs?limit=1', { headers: { 'X-Username': username, 'X-App-Password': pwd } })
+    .then(r => r.ok);
+}
+
+// 每次 fetch 回來 401 都重新鎖屏
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !UNLOCKED) {
+    document.getElementById('lockScreen').style.display = 'flex';
+  }
+  if (document.visibilityState === 'visible' && APP_PASSWORD) {
+    verifyPassword(APP_USERNAME, APP_PASSWORD).then(ok => {
+      if (!ok) doLock();
+    });
+  }
+});
+
+// 載入時若 localStorage 有帳密，先驗證再解鎖
+const saved = localStorage.getItem('app_cred');
+if (saved) {
+  try {
+    const {u, p} = JSON.parse(saved);
+    document.getElementById('usernameInput').value = u;
+    document.getElementById('pwdInput').value = p;
+    verifyPassword(u, p).then(ok => {
+      if (ok) {
+        APP_USERNAME = u;
+        APP_PASSWORD = p;
+        UNLOCKED = true;
+        document.getElementById('lockScreen').style.display = 'none';
+        initApp();
+      } else {
+        localStorage.removeItem('app_cred');
+        document.getElementById('pwdInput').value = '';
+        document.getElementById('lockError').textContent = '請重新登入';
+      }
+    });
+  } catch(e) {
+    localStorage.removeItem('app_cred');
+  }
 }
 </script>
 
+<!-- 自動登入（略過鎖屏） -->
 <script>
 const _fetch = window.fetch;
-window.fetch = function(url, opts) {
+window.fetch = function(url, opts = {}) {
   if (APP_PASSWORD && url.startsWith('/api/')) {
-    opts = opts || {};
-    opts.headers = opts.headers || {};
-    opts.headers['X-App-Password'] = APP_PASSWORD;
+    opts.headers = Object.assign({}, opts.headers || {}, {
+      'X-Username': APP_USERNAME,
+      'X-App-Password': APP_PASSWORD
+    });
   }
-  return _fetch.apply(this, arguments);
+  return _fetch.call(this, url, opts);
 };
 </script>
 
@@ -487,6 +602,8 @@ async function uploadAudio(blob, originalName) {
       const job = JSON.parse(xhr.responseText);
       currentJobId = job.id;
       showStatus(job);
+    } else if (xhr.status === 401 || xhr.status === 403) {
+      checkAndLock();
     } else if (xhr.status === 0) {
       // aborted
     } else {
@@ -497,6 +614,7 @@ async function uploadAudio(blob, originalName) {
   xhr.ontimeout = () => { resetUploadUI(); showUploadError('上傳逾時'); };
   xhr.open('POST', '/api/jobs');
   xhr.timeout = 120000;
+  if (APP_PASSWORD) xhr.setRequestHeader('X-App-Password', APP_PASSWORD);
   xhr.send(formData);
 }
 
@@ -577,6 +695,8 @@ async function handleFile(file) {
       const job = JSON.parse(xhr.responseText);
       currentJobId = job.id;
       showStatus(job);
+    } else if (xhr.status === 401 || xhr.status === 403) {
+      checkAndLock();
     } else if (xhr.status === 0) {
       // aborted
     } else {
@@ -702,8 +822,10 @@ async function loadHistory() {
   } catch (e) {}
 }
 
-loadHistory();
-setInterval(loadHistory, 15000);
+function initApp() {
+  loadHistory();
+  setInterval(loadHistory, 15000);
+}
 </script>
 </div><!-- /appContent -->
 </body>
@@ -718,34 +840,38 @@ setInterval(loadHistory, 15000);
 def index():
     return render_template_string(INDEX_HTML)
 
+import logging, time
+logger = logging.getLogger(__name__)
+
 @app.route("/api/jobs", methods=["POST"])
 def api_create_job():
     """新建 job，接收音頻檔案"""
+    t0 = time.time()
+    logger.info(f"[UPLOAD] request started")
     if not check_password():
         return jsonify({"error": "需要密碼"}), 401
     if 'audio' not in request.files:
         return jsonify({"error": "no audio"}), 400
 
+    logger.info(f"[UPLOAD] auth passed")
     audio = request.files['audio']
     ext = audio.filename.split('.')[-1] if '.' in audio.filename else 'webm'
     job_id = str(uuid.uuid4())[:8]
     saved_name = f"{job_id}.{ext}"
     save_path = UPLOAD_DIR / saved_name
-
-    # Non-blocking write via /dev/shm (memory disk) then move to UPLOAD_DIR
-    import shutil, threading
-    tmp_path = Path('/dev/shm') / saved_name
-
-    def _write_and_move(stream, tmp_path, final_path):
+    logger.info(f"[UPLOAD] filename={saved_name}, size_hint={audio.content_length}")
+    # 直接在 request 生命週期內讀完，避免 WSGI stream 關閉問題
+    try:
+        audio.stream.seek(0)
+        file_data = audio.stream.read()
         with open(tmp_path, 'wb', buffering=131072) as f:
-            while True:
-                chunk = stream.read(131072)
-                if not chunk:
-                    break
-                f.write(chunk)
-        shutil.move(str(tmp_path), str(final_path))
-
-    threading.Thread(target=_write_and_move, args=(audio.stream, tmp_path, save_path), daemon=True).start()
+            f.write(file_data)
+        shutil.move(str(tmp_path), str(save_path))
+        logger.info(f"[UPLOAD] write done, moved ({len(file_data)} bytes)")
+    except Exception as e:
+        logger.error(f"[UPLOAD] write failed: {e}")
+        return jsonify({"error": "上傳失敗"}), 500
+    logger.info(f"[UPLOAD] write complete ({(time.time()-t0)*1000:.0f}ms total)")
 
     job = create_job(saved_name, source="upload")
     job["original_name"] = request.form.get("original_name", audio.filename)
@@ -809,9 +935,7 @@ def api_reset_job(job_id):
 
 @app.route("/api/jobs/<job_id>/audio", methods=["GET"])
 def api_download_audio(job_id):
-    """下載音頻（Worker 用）"""
-    if not check_password():
-        return jsonify({"error": "需要密碼"}), 401
+    """下載音頻（Worker 用，不需要密碼驗證）"""
     jobs = load_jobs()
     job = next((j for j in jobs if j["id"] == job_id), None)
     if not job:
