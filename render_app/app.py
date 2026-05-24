@@ -15,6 +15,7 @@ from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
+from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, render_template_string
 
 app = Flask(__name__)
@@ -38,23 +39,49 @@ try:
 except FileNotFoundError:
     JOBS_FILE = Path("./jobs.json")
 
-APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "$2b$12$TaXboLwNVaLpBtjeHktW7evT0rkevAPAkCm1q3H968eio8NFtxJSe")  # bcrypt hash of Qq8yjjhcb1
+APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "")
 
 # ==========================================
-# 簡易密碼驗證（bcrypt）
+# 密碼驗證（bcrypt）+ 裝飾器
 # ==========================================
+
+# 不需要密碼的路徑（純健康檢查）
+PUBLIC_PATHS = {"/", "/health", "/favicon.ico"}
 
 def check_password():
     """檢查 X-App-Password header，支援 bcrypt hash"""
+    if request.path in PUBLIC_PATHS:
+        return True  # 公開路徑不需要密碼
     if not APP_PASSWORD_HASH:
         return True  # 沒設定密碼就放行
     pwd = request.headers.get("X-App-Password", "")
-    return bcrypt.checkpw(pwd.encode(), APP_PASSWORD_HASH.encode())
+    if not pwd:
+        return False
+    try:
+        return bcrypt.checkpw(pwd.encode(), APP_PASSWORD_HASH.encode())
+    except Exception:
+        return False
 
-def require_password():
-    """若密碼錯誤回傳 401"""
+def require_password(f):
+    """裝飾器：若密碼錯誤，回傳 401 兼 JSON（讓前端知道要跳出登入頁）"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not check_password():
+            return jsonify({"error": "需要密碼", "code": "auth_required"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+@app.before_request
+def enforce_password():
+    """所有請求都要檢查密碼，401 时回 JSON（不是 HTML）"""
+    if request.method == "OPTIONS":
+        return  # 讓 CORS 通過
+    if request.path in PUBLIC_PATHS:
+        return  # 公開路徑
     if not check_password():
-        return jsonify({"error": "需要密碼"}), 401
+        resp = jsonify({"error": "需要密碼", "code": "auth_required"})
+        resp.status_code = 401
+        return resp
 
 # ==========================================
 # Job 管理
@@ -260,12 +287,88 @@ function initApp() {
   setInterval(loadHistory, 15000);
 }
 
+// ==========================================
+// 強制的密碼檢查：每次頁面可見或 API 401 都重新驗證
+// ==========================================
+
+// 每次 fetch 回來 401 就強制回到鎖屏
+async function checkAndLock() {
+  APP_PASSWORD = '';
+  UNLOCKED = false;
+  localStorage.removeItem('app_pwd');
+  document.getElementById('lockScreen').style.display = 'flex';
+  document.getElementById('appContent').style.display = 'none';
+  document.getElementById('pwdInput').value = '';
+  document.getElementById('lockError').textContent = '請重新輸入密碼';
+}
+
+function verifyPassword(pwd) {
+  return fetch('/api/jobs?limit=1', { headers: { 'X-App-Password': pwd } })
+    .then(r => {
+      if (!r.ok) {
+        // 密碼錯誤，清除存檔並鎖屏
+        if (r.status === 401 || r.status === 403) {
+          localStorage.removeItem('app_pwd');
+          document.getElementById('pwdInput').value = '';
+        }
+        return false;
+      }
+      return true;
+    });
+}
+
+// 每次 fetch 回來 401 都重新鎖屏（攔截器）
+const _fetch = window.fetch;
+window.fetch = function(url, opts) {
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  if (APP_PASSWORD && url.startsWith('/api/')) {
+    opts.headers['X-App-Password'] = APP_PASSWORD;
+  }
+  return _fetch.apply(this, arguments).then(async response => {
+    if (response.status === 401 && url.startsWith('/api/')) {
+      // 密碼過期或錯誤，強制鎖屏
+      await checkAndLock();
+    }
+    return response;
+  });
+};
+
+// 定期驗證密碼（每 30 秒）
+setInterval(async () => {
+  if (!APP_PASSWORD) return;
+  const ok = await verifyPassword(APP_PASSWORD);
+  if (!ok) await checkAndLock();
+}, 30000);
+
+// 每次頁面可見（從 background 回來）立即驗證
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && APP_PASSWORD) {
+    const ok = await verifyPassword(APP_PASSWORD);
+    if (!ok) await checkAndLock();
+  }
+});
+
+// 載入時若 localStorage 有密碼，先驗證再解鎖
 const savedPwd = localStorage.getItem('app_pwd');
 if (savedPwd) {
   document.getElementById('pwdInput').value = savedPwd;
-  // 先驗證存過的密碼
-  fetch('/api/jobs?limit=1', { headers: { 'X-App-Password': savedPwd } })
-    .then(r => { if (r.ok) { APP_PASSWORD = savedPwd; UNLOCKED = true; document.getElementById('lockScreen').style.display = 'none'; initApp(); } });
+  verifyPassword(savedPwd).then(ok => {
+    if (ok) {
+      APP_PASSWORD = savedPwd;
+      UNLOCKED = true;
+      document.getElementById('lockScreen').style.display = 'none';
+      initApp();
+    } else {
+      // 存檔的密碼已過期，顯示鎖屏
+      document.getElementById('lockScreen').style.display = 'flex';
+      document.getElementById('appContent').style.display = 'none';
+      document.getElementById('pwdInput').value = '';
+      document.getElementById('lockError').textContent = '請重新輸入密碼';
+    }
+  });
+} else {
+  document.getElementById('lockScreen').style.display = 'flex';
 }
 </script>
 
