@@ -592,6 +592,7 @@ async function handleFile(file) {
     showUploadError('上傳逾時');
   };
   xhr.open('POST', '/api/jobs');
+  if (APP_PASSWORD) xhr.setRequestHeader('X-App-Password', APP_PASSWORD);
   xhr.timeout = 120000;
   xhr.send(formData);
 }
