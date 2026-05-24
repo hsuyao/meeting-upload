@@ -38,7 +38,7 @@ try:
 except FileNotFoundError:
     JOBS_FILE = Path("./jobs.json")
 
-APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "$2b$12$wNSItNBhkeevcWqQNLA4YeE1HCEIPKapw4uwb6wq73gv3Vo0raQIu")  # bcrypt hash of REDACTED
+APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "$2b$12$TaXboLwNVaLpBtjeHktW7evT0rkevAPAkCm1q3H968eio8NFtxJSe")  # bcrypt hash of Qq8yjjhcb1
 
 # ==========================================
 # 簡易密碼驗證（bcrypt）
