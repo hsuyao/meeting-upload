@@ -371,6 +371,13 @@ async function toggleRecording() {
       mediaRecorder.onstop = async () => {
         const blob = new Blob(audioChunks, { type: 'audio/webm' });
         stream.getTracks().forEach(t => t.stop());
+        const duration = Math.floor((Date.now() - startTime) / 1000);
+        if (duration < 60) {
+          alert('錄音太短（' + duration + '秒），請至少錄製 1 分鐘');
+          document.getElementById('recHint') && (document.getElementById('recHint').textContent = '錄音太短');
+          document.getElementById('recHintD') && (document.getElementById('recHintD').textContent = '錄音太短');
+          return;
+        }
         await uploadAudio(blob, 'recorded.webm');
       };
 

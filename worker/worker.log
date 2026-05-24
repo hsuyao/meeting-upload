@@ -1,0 +1,44 @@
+[worker] 啟動，poll interval=120s
+[worker] Render URL: https://meeting-upload.onrender.com
+[api] 取得 pending jobs 失敗: HTTPSConnectionPool(host='meeting-upload.onrender.com', port=443): Read timed out. (read timeout=10)
+[worker] 17:02:52 — 無 pending jobs，sleep 120s
+[worker] 17:04:53 — 無 pending jobs，sleep 120s
+[worker] 17:06:53 — 無 pending jobs，sleep 120s
+[worker] 17:08:53 — 無 pending jobs，sleep 120s
+[worker] 17:10:53 — 無 pending jobs，sleep 120s
+[worker] 17:12:53 — 無 pending jobs，sleep 120s
+[worker] 17:14:54 — 無 pending jobs，sleep 120s
+
+[worker] 处理 job 82855365: recorded.webm
+[worker] 下載音頻...
+[worker] 送到 Mac 處理...
+[worker] 上傳 /home/eric/meeting-upload/worker/tmp/043419dd.webm → Mac /tmp/82855365_043419dd.webm
+[worker] 執行 mlx_whisper + pyannote...
+[worker] SSH command: PYTHONPATH='' PATH=$HOME/homebrew/bin:$PATH $HOME/whisperx/bin/python /Users/erichy_tsai/whisperx/integrated_pipeline.py --input /tmp/82855365_043419dd.webm --output /Users/erichy_tsai/whisperx/output/82855365.srt
+[worker] Mac 輸出長度: 443
+[worker] SRT 已下載: /home/eric/.hermes/profiles/meeting-note/srt_output/82855365.srt
+[post_srt] stdout: [post_srt] 处理: 82855365.srt
+[post_srt] 品質OK，speakers=['A']，共4段
+[post_srt] 自我介紹抓到: {'A': ['Eric']}
+[post_srt] Speaker voice hashes: {}
+[post_srt] 💾 本地儲存: 82855365_meeting_note.md (411 chars)
+[post_srt] ✅ Notion: https://www.notion.so/05-24-82855365-36a9342f4b3381ffa5d9ea371eed40fa
+
+[worker] ✅ job 82855365 完成
+[worker] 17:17:12 — 無 pending jobs，sleep 120s
+[worker] 17:19:13 — 無 pending jobs，sleep 120s
+[worker] 17:21:13 — 無 pending jobs，sleep 120s
+[worker] 17:23:13 — 無 pending jobs，sleep 120s
+[worker] 17:25:14 — 無 pending jobs，sleep 120s
+[worker] 17:27:14 — 無 pending jobs，sleep 120s
+[worker] 17:29:14 — 無 pending jobs，sleep 120s
+[worker] 17:31:14 — 無 pending jobs，sleep 120s
+[worker] 17:33:14 — 無 pending jobs，sleep 120s
+[worker] 17:35:15 — 無 pending jobs，sleep 120s
+[worker] 17:37:15 — 無 pending jobs，sleep 120s
+[worker] 17:39:16 — 無 pending jobs，sleep 120s
+[worker] 17:41:16 — 無 pending jobs，sleep 120s
+[worker] 17:43:16 — 無 pending jobs，sleep 120s
+[worker] 17:45:20 — 無 pending jobs，sleep 120s
+[worker] 17:47:20 — 無 pending jobs，sleep 120s
+[worker] 17:49:21 — 無 pending jobs，sleep 120s
