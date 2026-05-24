@@ -327,7 +327,7 @@ window.fetch = function(url, opts) {
   }
   return _fetch.apply(this, arguments).then(async response => {
     if (response.status === 401 && url.startsWith('/api/')) {
-      // 密碼過期或錯誤，強制鎖屏
+      // 密碼過期或錯誤，強制鎖屏並重導向
       await checkAndLock();
     }
     return response;
@@ -360,15 +360,31 @@ if (savedPwd) {
       document.getElementById('lockScreen').style.display = 'none';
       initApp();
     } else {
-      // 存檔的密碼已過期，顯示鎖屏
-      document.getElementById('lockScreen').style.display = 'flex';
-      document.getElementById('appContent').style.display = 'none';
+      // 存檔的密碼已過期，強制回到鎖屏（可見）
+      localStorage.removeItem('app_pwd');
+      APP_PASSWORD = '';
+      UNLOCKED = false;
       document.getElementById('pwdInput').value = '';
-      document.getElementById('lockError').textContent = '請重新輸入密碼';
+      document.getElementById('lockError').textContent = '密碼已過期，請重新輸入';
+      // 確保鎖屏可見
+      const lock = document.getElementById('lockScreen');
+      lock.style.display = 'flex';
+      lock.style.visibility = 'visible';
+      lock.style.opacity = '1';
+      // 確保應用內容隱藏
+      const content = document.getElementById('appContent');
+      if (content) content.style.display = 'none';
+      // 隱藏手機內容（防止殘留）
+      document.querySelectorAll('.mobile-only, .desktop-container').forEach(el => {
+        el.style.display = 'none';
+      });
     }
   });
 } else {
-  document.getElementById('lockScreen').style.display = 'flex';
+  // 無密碼，強制顯示鎖屏
+  const lock = document.getElementById('lockScreen');
+  lock.style.display = 'flex';
+  lock.style.visibility = 'visible';
 }
 </script>
 
@@ -590,6 +606,8 @@ async function uploadAudio(blob, originalName) {
       const job = JSON.parse(xhr.responseText);
       currentJobId = job.id;
       showStatus(job);
+    } else if (xhr.status === 401 || xhr.status === 403) {
+      checkAndLock();
     } else if (xhr.status === 0) {
       // aborted
     } else {
@@ -680,6 +698,8 @@ async function handleFile(file) {
       const job = JSON.parse(xhr.responseText);
       currentJobId = job.id;
       showStatus(job);
+    } else if (xhr.status === 401 || xhr.status === 403) {
+      checkAndLock();
     } else if (xhr.status === 0) {
       // aborted
     } else {
