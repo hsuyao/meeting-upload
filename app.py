@@ -181,8 +181,13 @@ INDEX_HTML = """
   .drop-zone .icon { font-size: 40px; }
 
   /* 上傳進度 */
-  .progress-bar { width: 100%; max-width: 360px; height: 6px; background: #333; border-radius: 3px; margin-top: 16px; display: none; }
+  .progress-bar { width: 100%; max-width: 360px; height: 6px; background: #333; border-radius: 3px; margin-top: 16px; display: none; position: relative; }
   .progress-bar .fill { height: 100%; background: #4fc3f7; border-radius: 3px; width: 0%; transition: width 0.3s; }
+  .progress-info { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; width: 100%; max-width: 360px; }
+  .progress-info .cancel-btn { background: #e53935; border: none; color: #fff; padding: 6px 16px; font-size: 12px; border-radius: 4px; cursor: pointer; display: none; }
+  .progress-info .cancel-btn:hover { background: #f44336; }
+  .progress-info .filename { font-size: 12px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .progress-info .pct { font-size: 12px; color: #4fc3f7; margin-left: 8px; }
 
   /* 狀態卡片 */
   .status-card { background: #1a1a1a; border-radius: 12px; padding: 20px; margin-top: 24px; width: 100%; max-width: 360px; text-align: center; }
@@ -297,6 +302,11 @@ window.fetch = function(url, opts) {
       </div>
       <input type="file" id="fileInput" accept=".mp3,.m4a,.wav,.ogg,audio/*" onchange="handleFile(this.files[0])">
       <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+      <div class="progress-info" id="progressInfo">
+        <span class="filename" id="progressFile"></span>
+        <span class="pct" id="progressPct"></span>
+        <button class="cancel-btn" id="cancelBtn" onclick="cancelUpload()">取消</button>
+      </div>
     </div>
 
     <!-- 狀態卡片 -->
@@ -336,6 +346,11 @@ window.fetch = function(url, opts) {
         <h3>上傳成功</h3>
         <div class="status" id="jobStatusD">處理中...</div>
         <div class="time" id="jobTimeD"></div>
+      </div>
+      <div class="progress-info" id="progressInfoD">
+        <span class="filename" id="progressFileD"></span>
+        <span class="pct" id="progressPctD"></span>
+        <button class="cancel-btn" id="cancelBtnD" onclick="cancelUpload()">取消</button>
       </div>
     </div>
   </div>
@@ -441,67 +456,156 @@ function setupWaveform(stream) {
 // 上傳
 // ==========================================
 async function uploadAudio(blob, originalName) {
+  const suffix = window.innerWidth > 640 ? 'D' : '';
+  const pbId = 'progressBar' + suffix;
+  const fillId = 'progressFill' + suffix;
+
+  document.getElementById(pbId).style.display = 'block';
+  document.getElementById(fillId).style.width = '0%';
+  showProgressInfo(suffix, originalName);
+
   const formData = new FormData();
   formData.append('audio', blob, originalName);
   formData.append('original_name', originalName);
 
-  const pbId = 'progressBar' + (window.innerWidth > 640 ? 'D' : '');
-  const fillId = 'progressFill' + (window.innerWidth > 640 ? 'D' : '');
+  const xhr = new XMLHttpRequest();
+  currentXhr = xhr;
 
-  document.getElementById(pbId).style.display = 'block';
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      const pct = Math.round((e.loaded / e.total) * 100);
+      document.getElementById(fillId).style.width = pct + '%';
+      updateProgress(suffix, pct);
+    }
+  };
+  xhr.onload = () => {
+    resetUploadUI();
+    if (xhr.status === 200) {
+      const job = JSON.parse(xhr.responseText);
+      currentJobId = job.id;
+      showStatus(job);
+    } else if (xhr.status === 0) {
+      // aborted
+    } else {
+      showUploadError('上傳失敗（' + xhr.status + '）');
+    }
+  };
+  xhr.onerror = () => { resetUploadUI(); showUploadError('網路錯誤，請檢查連線'); };
+  xhr.ontimeout = () => { resetUploadUI(); showUploadError('上傳逾時'); };
+  xhr.open('POST', '/api/jobs');
+  xhr.timeout = 120000;
+  xhr.send(formData);
+}
 
-  try {
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = e => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        document.getElementById(fillId).style.width = pct + '%';
-      }
-    };
-    xhr.onload = () => {
-      document.getElementById(pbId).style.display = 'none';
-      document.getElementById(fillId).style.width = '0%';
-      if (xhr.status === 200) {
-        const job = JSON.parse(xhr.responseText);
-        showStatus(job);
-      } else {
-        alert('上傳失敗：' + xhr.statusText);
-      }
-    };
-    xhr.open('POST', '/api/jobs');
-    xhr.send(formData);
-  } catch (e) {
-    alert('上傳失敗：' + e.message);
+let currentXhr = null;
+let currentJobId = null;
+
+function cancelUpload() {
+  if (currentXhr) {
+    currentXhr.abort();
+    currentXhr = null;
+    resetUploadUI();
   }
+}
+
+function resetUploadUI() {
+  ['progressBar', 'progressBarD'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; el.querySelector('.fill').style.width = '0%'; }
+  });
+  ['progressInfo', 'progressInfoD'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  ['cancelBtn', 'cancelBtnD'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  currentXhr = null;
+}
+
+function showProgressInfo(suffix, filename) {
+  const infoId = 'progressInfo' + suffix;
+  const fileId = 'progressFile' + suffix;
+  const pctId = 'progressPct' + suffix;
+  const cancelId = 'cancelBtn' + suffix;
+  const el = document.getElementById(infoId);
+  if (el) el.style.display = 'flex';
+  const fileEl = document.getElementById(fileId);
+  if (fileEl) fileEl.textContent = filename;
+  const pctEl = document.getElementById(pctId);
+  if (pctEl) pctEl.textContent = '0%';
+  const cancelEl = document.getElementById(cancelId);
+  if (cancelEl) cancelEl.style.display = 'inline-block';
+}
+
+function updateProgress(suffix, pct) {
+  const pctEl = document.getElementById('progressPct' + suffix);
+  if (pctEl) pctEl.textContent = pct + '%';
 }
 
 async function handleFile(file) {
   if (!file) return;
-  const pbId = 'progressBar' + (window.innerWidth > 640 ? 'D' : '');
-  const fillId = 'progressFill' + (window.innerWidth > 640 ? 'D' : '');
+  const suffix = window.innerWidth > 640 ? 'D' : '';
+  const pbId = 'progressBar' + suffix;
+  const fillId = 'progressFill' + suffix;
+
   document.getElementById(pbId).style.display = 'block';
+  document.getElementById(fillId).style.width = '0%';
+  showProgressInfo(suffix, file.name);
 
   const formData = new FormData();
   formData.append('audio', file);
   formData.append('original_name', file.name);
 
   const xhr = new XMLHttpRequest();
+  currentXhr = xhr;
+
   xhr.upload.onprogress = e => {
     if (e.lengthComputable) {
       const pct = Math.round((e.loaded / e.total) * 100);
       document.getElementById(fillId).style.width = pct + '%';
+      updateProgress(suffix, pct);
     }
   };
   xhr.onload = () => {
-    document.getElementById(pbId).style.display = 'none';
-    document.getElementById(fillId).style.width = '0%';
+    resetUploadUI();
     if (xhr.status === 200) {
       const job = JSON.parse(xhr.responseText);
+      currentJobId = job.id;
       showStatus(job);
+    } else if (xhr.status === 0) {
+      // aborted
+    } else {
+      showUploadError('上傳失敗（' + xhr.status + '）');
     }
   };
+  xhr.onerror = () => {
+    resetUploadUI();
+    showUploadError('網路錯誤，請檢查連線');
+  };
+  xhr.ontimeout = () => {
+    resetUploadUI();
+    showUploadError('上傳逾時');
+  };
   xhr.open('POST', '/api/jobs');
+  xhr.timeout = 120000;
   xhr.send(formData);
+}
+
+function showUploadError(msg) {
+  const suffix = window.innerWidth > 640 ? 'D' : '';
+  const cardId = 'statusCard' + suffix;
+  const statusId = 'jobStatus' + suffix;
+  const timeId = 'jobTime' + suffix;
+  const card = document.getElementById(cardId);
+  if (card) {
+    card.style.display = 'block';
+    const el = document.getElementById(statusId);
+    if (el) el.textContent = '❌ ' + msg;
+    const timeEl = document.getElementById(timeId);
+    if (timeEl) timeEl.textContent = '';
+  }
 }
 
 // 拖放
@@ -521,11 +625,13 @@ async function handleFile(file) {
 // 狀態顯示
 // ==========================================
 function showStatus(job) {
-  const cardId = window.innerWidth > 640 ? 'statusCardD' : 'statusCard';
-  const statusId = window.innerWidth > 640 ? 'jobStatusD' : 'jobStatus';
-  const timeId = window.innerWidth > 640 ? 'jobTimeD' : 'jobTime';
+  const suffix = window.innerWidth > 640 ? 'D' : '';
+  const cardId = 'statusCard' + suffix;
+  const statusId = 'jobStatus' + suffix;
+  const timeId = 'jobTime' + suffix;
   const card = document.getElementById(cardId);
-  card.style.display = 'block';
+  if (card) card.style.display = 'block';
+  currentJobId = job.id;
   pollStatus(job.id);
 }
 
