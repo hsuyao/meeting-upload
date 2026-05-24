@@ -618,6 +618,7 @@ async function uploadAudio(blob, originalName) {
   xhr.ontimeout = () => { resetUploadUI(); showUploadError('上傳逾時'); };
   xhr.open('POST', '/api/jobs');
   xhr.timeout = 120000;
+  if (APP_PASSWORD) xhr.setRequestHeader('X-App-Password', APP_PASSWORD);
   xhr.send(formData);
 }
 
