@@ -8,9 +8,12 @@ Meeting Upload Web — Render Flask App
 import os
 import uuid
 import json
+import logging
 import bcrypt
 from datetime import datetime
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
 from flask import Flask, request, jsonify, send_from_directory, render_template_string
 
@@ -714,34 +717,45 @@ setInterval(loadHistory, 15000);
 def index():
     return render_template_string(INDEX_HTML)
 
+import logging, time
+logger = logging.getLogger(__name__)
+
 @app.route("/api/jobs", methods=["POST"])
 def api_create_job():
     """新建 job，接收音頻檔案"""
+    t0 = time.time()
+    logger.info(f"[UPLOAD] request started")
     if not check_password():
         return jsonify({"error": "需要密碼"}), 401
     if 'audio' not in request.files:
         return jsonify({"error": "no audio"}), 400
 
+    logger.info(f"[UPLOAD] auth passed")
     audio = request.files['audio']
     ext = audio.filename.split('.')[-1] if '.' in audio.filename else 'webm'
     job_id = str(uuid.uuid4())[:8]
     saved_name = f"{job_id}.{ext}"
     save_path = UPLOAD_DIR / saved_name
+    logger.info(f"[UPLOAD] filename={saved_name}, size_hint={audio.content_length}")
 
     # Non-blocking write via /dev/shm (memory disk) then move to UPLOAD_DIR
     import shutil, threading
     tmp_path = Path('/dev/shm') / saved_name
 
     def _write_and_move(stream, tmp_path, final_path):
+        logger.info("[UPLOAD] thread started")
         with open(tmp_path, 'wb', buffering=131072) as f:
             while True:
                 chunk = stream.read(131072)
                 if not chunk:
                     break
                 f.write(chunk)
+        logger.info("[UPLOAD] write done, moving")
         shutil.move(str(tmp_path), str(final_path))
+        logger.info("[UPLOAD] moved to final location")
 
     threading.Thread(target=_write_and_move, args=(audio.stream, tmp_path, save_path), daemon=True).start()
+    logger.info(f"[UPLOAD] thread spawned, returning immediately ({(time.time()-t0)*1000:.0f}ms)")
 
     job = create_job(saved_name, source="upload")
     job["original_name"] = request.form.get("original_name", audio.filename)

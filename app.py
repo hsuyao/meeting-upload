@@ -8,9 +8,12 @@ Meeting Upload Web — Render Flask App
 import os
 import uuid
 import json
+import logging
 import bcrypt
 from datetime import datetime
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
 from flask import Flask, request, jsonify, send_from_directory, render_template_string
 
