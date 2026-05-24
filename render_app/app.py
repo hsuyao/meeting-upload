@@ -8,6 +8,7 @@ Meeting Upload Web — Render Flask App
 import os
 import uuid
 import json
+import bcrypt
 from datetime import datetime
 from pathlib import Path
 
@@ -34,17 +35,18 @@ try:
 except FileNotFoundError:
     JOBS_FILE = Path("./jobs.json")
 
-APP_PASSWORD = os.environ.get("APP_PASSWORD", "")  # 空=不保護
+APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "$2b$12$VaoszwYALGCG28kPHTiDquhX3MgIcPNsS3ufbEWgtb0vxB5w.sobu")  # bcrypt hash，不設定就無保護
 
 # ==========================================
-# 簡易密碼驗證
+# 簡易密碼驗證（bcrypt）
 # ==========================================
 
 def check_password():
-    """檢查 X-App-Password header"""
-    if not APP_PASSWORD:
+    """檢查 X-App-Password header，支援 bcrypt hash"""
+    if not APP_PASSWORD_HASH:
         return True  # 沒設定密碼就放行
-    return request.headers.get("X-App-Password") == APP_PASSWORD
+    pwd = request.headers.get("X-App-Password", "")
+    return bcrypt.checkpw(pwd.encode(), APP_PASSWORD_HASH.encode())
 
 def require_password():
     """若密碼錯誤回傳 401"""

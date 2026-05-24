@@ -1,0 +1,6 @@
+[worker] 啟動，poll interval=120s
+[worker] Render URL: https://meeting-upload.onrender.com
+[worker] 16:20:12 — 無 pending jobs，sleep 120s
+[worker] 16:22:13 — 無 pending jobs，sleep 120s
+[worker] 16:24:13 — 無 pending jobs，sleep 120s
+[worker] 16:26:18 — 無 pending jobs，sleep 120s

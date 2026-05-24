@@ -1,0 +1,99 @@
+[worker] 啟動，poll interval=120s
+[worker] Render URL: https://meeting-upload.onrender.com
+[api] 取得 pending jobs 失敗: HTTPSConnectionPool(host='meeting-upload.onrender.com', port=443): Read timed out. (read timeout=10)
+[worker] 15:50:08 — 無 pending jobs，sleep 120s
+[api] 取得 pending jobs 失敗: HTTPSConnectionPool(host='meeting-upload.onrender.com', port=443): Read timed out. (read timeout=10)
+[worker] 15:52:18 — 無 pending jobs，sleep 120s
+[api] 取得 pending jobs 失敗: HTTPSConnectionPool(host='meeting-upload.onrender.com', port=443): Read timed out. (read timeout=10)
+[worker] 15:54:28 — 無 pending jobs，sleep 120s
+[worker] 15:56:28 — 無 pending jobs，sleep 120s
+[worker] 15:58:28 — 無 pending jobs，sleep 120s
+
+[worker] 处理 job ef6f5db9: recorded.webm
+[worker] 下載音頻...
+[worker] 送到 Mac 處理...
+[worker] 上傳 /home/eric/meeting-upload/worker/tmp/bce2b564.webm → Mac /tmp/ef6f5db9_bce2b564.webm
+[worker] 執行 mlx_whisper + pyannote...
+[worker] ❌ job ef6f5db9 失敗: SSH 執行失敗: /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/pyannote/audio/core/io.py:47: UserWarning: 
+torchcodec is not installed correctly so built-in audio decoding will fail. Solutions are:
+* use audio preloaded in-memory as a {'waveform': (channel, time) torch.Tensor, 'sample_rate': int} dictionary;
+* fix torchcodec installation. Error message was:
+
+Could not load libtorchcodec. Likely causes:
+          1. FFmpeg is not properly installed in your environment. We support
+             versions 4, 5, 6 and 7.
+          2. The PyTorch version (2.8.0) is not compatible with
+             this version of TorchCodec. Refer to the version compatibility
+             table:
+             https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec.
+          3. Another runtime dependency; see exceptions below.
+        The following exceptions were raised as we tried to load libtorchcodec:
+        
+[start of libtorchcodec loading traceback]
+FFmpeg version 7: dlopen(/Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core7.dylib, 0x0006): Library not loaded: @rpath/libavutil.59.dylib
+  Referenced from: <4EE009B0-9B70-3C86-BB0E-E3E97FD75307> /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core7.dylib
+  Reason: tried: '/Users/erichy_tsai/miniforge3/lib/python3.13/lib-dynload/../../libavutil.59.dylib' (no such file), '/Users/erichy_tsai/miniforge3/bin/../lib/libavutil.59.dylib' (no such file)
+FFmpeg version 6: dlopen(/Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core6.dylib, 0x0006): Library not loaded: @rpath/libavutil.58.dylib
+  Referenced from: <429667FA-10BA-309D-B804-C6862E0D693C> /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core6.dylib
+  Reason: tried: '/Users/erichy_tsai/miniforge3/lib/python3.13/lib-dynload/../../libavutil.58.dylib' (no such file), '/Users/erichy_tsai/miniforge3/bin/../lib/libavutil.58.dylib' (no such file)
+FFmpeg version 5: dlopen(/Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core5.dylib, 0x0006): Library not loaded: @rpath/libavutil.57.dylib
+  Referenced from: <AF044D12-BBEA-3FC3-9BF0-FE09393BCD48> /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core5.dylib
+  Reason: tried: '/Users/erichy_tsai/miniforge3/lib/python3.13/lib-dynload/../../libavutil.57.dylib' (no such file), '/Users/erichy_tsai/miniforge3/bin/../lib/libavutil.57.dylib' (no such file)
+FFmpeg version 4: dlopen(/Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core4.dylib, 0x0006): Library not loaded: @rpath/libavutil.56.dylib
+  Referenced from: <F551E475-09B9-3CDC-9702-50798633AD8E> /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core4.dylib
+  Reason: tried: '/Users/erichy_tsai/miniforge3/lib/python3.13/lib-dynload/../../libavutil.56.dylib' (no such file), '/Users/erichy_tsai/miniforge3/bin/../lib/libavutil.56.dylib' (no such file)
+[end of libtorchcodec loading traceback].
+  warnings.warn(
+usage: integrated_pipeline.py [-h] --input INPUT --output OUTPUT [--wav WAV]
+                              [--model MODEL]
+integrated_pipeline.py: error: unrecognized arguments: --format srt
+
+[telegram] 發送失敗: HTTPSConnectionPool(host='api.telegram.org', port=443): Read timed out. (read timeout=15)
+[worker] 16:00:51 — 無 pending jobs，sleep 120s
+[worker] 16:02:52 — 無 pending jobs，sleep 120s
+[worker] 16:04:52 — 無 pending jobs，sleep 120s
+[worker] 16:06:52 — 無 pending jobs，sleep 120s
+[worker] 16:08:52 — 無 pending jobs，sleep 120s
+
+[worker] 处理 job 8b25b2fb: recorded.webm
+[worker] 下載音頻...
+[worker] 送到 Mac 處理...
+[worker] 上傳 /home/eric/meeting-upload/worker/tmp/7f941272.webm → Mac /tmp/8b25b2fb_7f941272.webm
+[worker] 執行 mlx_whisper + pyannote...
+[worker] ❌ job 8b25b2fb 失敗: SSH 執行失敗: /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/pyannote/audio/core/io.py:47: UserWarning: 
+torchcodec is not installed correctly so built-in audio decoding will fail. Solutions are:
+* use audio preloaded in-memory as a {'waveform': (channel, time) torch.Tensor, 'sample_rate': int} dictionary;
+* fix torchcodec installation. Error message was:
+
+Could not load libtorchcodec. Likely causes:
+          1. FFmpeg is not properly installed in your environment. We support
+             versions 4, 5, 6 and 7.
+          2. The PyTorch version (2.8.0) is not compatible with
+             this version of TorchCodec. Refer to the version compatibility
+             table:
+             https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec.
+          3. Another runtime dependency; see exceptions below.
+        The following exceptions were raised as we tried to load libtorchcodec:
+        
+[start of libtorchcodec loading traceback]
+FFmpeg version 7: dlopen(/Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core7.dylib, 0x0006): Library not loaded: @rpath/libavutil.59.dylib
+  Referenced from: <4EE009B0-9B70-3C86-BB0E-E3E97FD75307> /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core7.dylib
+  Reason: tried: '/Users/erichy_tsai/miniforge3/lib/python3.13/lib-dynload/../../libavutil.59.dylib' (no such file), '/Users/erichy_tsai/miniforge3/bin/../lib/libavutil.59.dylib' (no such file)
+FFmpeg version 6: dlopen(/Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core6.dylib, 0x0006): Library not loaded: @rpath/libavutil.58.dylib
+  Referenced from: <429667FA-10BA-309D-B804-C6862E0D693C> /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core6.dylib
+  Reason: tried: '/Users/erichy_tsai/miniforge3/lib/python3.13/lib-dynload/../../libavutil.58.dylib' (no such file), '/Users/erichy_tsai/miniforge3/bin/../lib/libavutil.58.dylib' (no such file)
+FFmpeg version 5: dlopen(/Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core5.dylib, 0x0006): Library not loaded: @rpath/libavutil.57.dylib
+  Referenced from: <AF044D12-BBEA-3FC3-9BF0-FE09393BCD48> /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core5.dylib
+  Reason: tried: '/Users/erichy_tsai/miniforge3/lib/python3.13/lib-dynload/../../libavutil.57.dylib' (no such file), '/Users/erichy_tsai/miniforge3/bin/../lib/libavutil.57.dylib' (no such file)
+FFmpeg version 4: dlopen(/Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core4.dylib, 0x0006): Library not loaded: @rpath/libavutil.56.dylib
+  Referenced from: <F551E475-09B9-3CDC-9702-50798633AD8E> /Users/erichy_tsai/whisperx/lib/python3.13/site-packages/torchcodec/libtorchcodec_core4.dylib
+  Reason: tried: '/Users/erichy_tsai/miniforge3/lib/python3.13/lib-dynload/../../libavutil.56.dylib' (no such file), '/Users/erichy_tsai/miniforge3/bin/../lib/libavutil.56.dylib' (no such file)
+[end of libtorchcodec loading traceback].
+  warnings.warn(
+usage: integrated_pipeline.py [-h] --input INPUT --output OUTPUT [--wav WAV]
+                              [--model MODEL]
+integrated_pipeline.py: error: unrecognized arguments: --format srt
+
+[telegram] 發送失敗: HTTPSConnectionPool(host='api.telegram.org', port=443): Read timed out. (read timeout=15)
+[worker] 16:11:15 — 無 pending jobs，sleep 120s
+[worker] 16:13:15 — 無 pending jobs，sleep 120s
