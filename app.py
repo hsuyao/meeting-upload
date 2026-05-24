@@ -733,9 +733,9 @@ def api_create_job():
     tmp_path = Path('/dev/shm') / saved_name
 
     def _write_and_move(stream, tmp_path, final_path):
-        with open(tmp_path, 'wb') as f:
+        with open(tmp_path, 'wb', buffering=131072) as f:
             while True:
-                chunk = stream.read(8192)
+                chunk = stream.read(131072)
                 if not chunk:
                     break
                 f.write(chunk)
