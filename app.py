@@ -311,7 +311,7 @@ window.fetch = function(url, opts) {
 
     <!-- 狀態卡片 -->
     <div style="text-align:center; margin-top: 32px;" id="statusCard" class="status-card" style="display:none;">
-      <h3>上傳成功</h3>
+      <h3 id="statusTitle">等待上傳...</h3>
       <div class="status" id="jobStatus">處理中...</div>
       <div class="time" id="jobTime"></div>
     </div>
@@ -343,7 +343,7 @@ window.fetch = function(url, opts) {
       <input type="file" id="fileInputD" accept=".mp3,.m4a,.wav,.ogg,audio/*" onchange="handleFile(this.files[0])">
       <div class="progress-bar" id="progressBarD"><div class="fill" id="progressFillD"></div></div>
       <div id="statusCardD" class="status-card" style="display:none;">
-        <h3>上傳成功</h3>
+        <h3 id="statusTitleD">等待上傳...</h3>
         <div class="status" id="jobStatusD">處理中...</div>
         <div class="time" id="jobTimeD"></div>
       </div>
@@ -598,9 +598,12 @@ function showUploadError(msg) {
   const cardId = 'statusCard' + suffix;
   const statusId = 'jobStatus' + suffix;
   const timeId = 'jobTime' + suffix;
+  const titleId = 'statusTitle' + suffix;
   const card = document.getElementById(cardId);
   if (card) {
     card.style.display = 'block';
+    const titleEl = document.getElementById(titleId);
+    if (titleEl) titleEl.textContent = '上傳失敗';
     const el = document.getElementById(statusId);
     if (el) el.textContent = '❌ ' + msg;
     const timeEl = document.getElementById(timeId);
@@ -629,8 +632,13 @@ function showStatus(job) {
   const cardId = 'statusCard' + suffix;
   const statusId = 'jobStatus' + suffix;
   const timeId = 'jobTime' + suffix;
+  const titleId = 'statusTitle' + suffix;
   const card = document.getElementById(cardId);
   if (card) card.style.display = 'block';
+  const titleEl = document.getElementById(titleId);
+  if (titleEl) titleEl.textContent = '上傳成功';
+  document.getElementById(statusId).textContent = '處理中...';
+  document.getElementById(timeId).textContent = '';
   currentJobId = job.id;
   pollStatus(job.id);
 }
