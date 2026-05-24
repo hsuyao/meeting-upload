@@ -739,24 +739,26 @@ def api_create_job():
     save_path = UPLOAD_DIR / saved_name
     logger.info(f"[UPLOAD] filename={saved_name}, size_hint={audio.content_length}")
 
-    # Non-blocking write via /dev/shm (memory disk) then move to UPLOAD_DIR
-    import shutil, threading
-    tmp_path = Path('/dev/shm') / saved_name
-
     def _write_and_move(stream, tmp_path, final_path):
         logger.info("[UPLOAD] thread started")
-        with open(tmp_path, 'wb', buffering=131072) as f:
-            while True:
-                chunk = stream.read(131072)
-                if not chunk:
-                    break
-                f.write(chunk)
-        logger.info("[UPLOAD] write done, moving")
-        shutil.move(str(tmp_path), str(final_path))
-        logger.info("[UPLOAD] moved to final location")
+        try:
+            with open(tmp_path, 'wb', buffering=131072) as f:
+                while True:
+                    chunk = stream.read(131072)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            logger.info("[UPLOAD] write done, moving")
+            shutil.move(str(tmp_path), str(final_path))
+            logger.info("[UPLOAD] moved to final location")
+        except ValueError:
+            # stream closed by WSGI after request ends — read what's already buffered
+            pass
 
-    threading.Thread(target=_write_and_move, args=(audio.stream, tmp_path, save_path), daemon=True).start()
-    logger.info(f"[UPLOAD] thread spawned, returning immediately ({(time.time()-t0)*1000:.0f}ms)")
+    t_write = threading.Thread(target=_write_and_move, args=(audio.stream, tmp_path, save_path))
+    t_write.start()
+    t_write.join()
+    logger.info(f"[UPLOAD] write complete ({(time.time()-t0)*1000:.0f}ms total)")
 
     job = create_job(saved_name, source="upload")
     job["original_name"] = request.form.get("original_name", audio.filename)
