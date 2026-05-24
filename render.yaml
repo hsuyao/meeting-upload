@@ -2,7 +2,7 @@ services:
   - type: web
     name: meeting-upload
     runtime: python
-    buildCommand: pip install -r render_app/requirements.txt
+    buildCommand: cd render_app && pip install -r requirements.txt
     startCommand: cd render_app && gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     plan: free
     envVars:
