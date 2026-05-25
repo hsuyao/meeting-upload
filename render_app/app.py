@@ -890,14 +890,15 @@ def api_create_job():
                 break
         save_jobs(jobs)
     except Exception as e:
-        logger.error(f"[UPLOAD] job/create/save failed: {e}", exc_info=True)
+        import traceback
+        logger.error(f"[UPLOAD] job/create/save failed: {e}\n{traceback.format_exc()}")
         # 檔案已寫入，但 job 建立失敗，尝试删除
         try:
             if save_path.exists():
                 save_path.unlink()
         except:
             pass
-        return jsonify({"error": "上傳失敗", "detail": f"job/save: {e}"}), 500
+        return jsonify({"error": "上傳失敗", "detail": str(type(e).__name__)}), 500
 
     return jsonify(job), 200
 
