@@ -481,6 +481,18 @@ window.fetch = function(url, opts = {}) {
     </div>
   </div>
 
+  <div id="speakerNamingModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:#1a1a1a; border:1px solid #333; border-radius:16px; padding:32px; max-width:480px; width:90%; color:#e0e0e0;">
+    <h2 style="margin:0 0 8px; color:#4fc3f7; font-weight:300; font-size:22px;">🎙️ 確認發言者</h2>
+    <p id="speakerNamingHint" style="color:#888; margin:0 0 24px; font-size:14px;">請為各發言者命名</p>
+    <div id="speakerNamingFields" style="margin-bottom:24px;"></div>
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button onclick="closeSpeakerNamingModal()" style="background:#444; color:#ccc; border:none; padding:10px 20px; border-radius:8px; cursor:pointer;">取消</button>
+      <button onclick="submitSpeakerNaming()" style="background:#4fc3f7; color:#000; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600;">確認</button>
+    </div>
+  </div>
+</div>
+
   <div style="position:fixed; bottom:20px; right:20px; width:280px;" id="historyPanel">
     <h2 style="font-size:12px; color:#666; text-transform:uppercase; margin-bottom:8px;">最近錄製</h2>
     <div id="historyListD"></div>
@@ -806,6 +818,100 @@ function showUploadError(msg) {
 });
 
 // ==========================================
+// Speaker Naming Modal
+// ==========================================
+let currentNamingJobId = null;
+
+async function showSpeakerNamingModal(jobId, filename) {
+  currentNamingJobId = jobId;
+  const modal = document.getElementById('speakerNamingModal');
+  const hint = document.getElementById('speakerNamingHint');
+  const fields = document.getElementById('speakerNamingFields');
+
+  hint.textContent = filename;
+  fields.innerHTML = '<p style="color:#888; font-size:14px;">發言者命名載入中...</p>';
+  modal.style.display = 'flex';
+
+  // 抓 pending job 的 speakers 資訊
+  try {
+    const r = await fetch(`/api/jobs/${jobId}`);
+    if (!r.ok) throw new Error('Failed to fetch job');
+    const job = await r.json();
+
+    // 嘗試從 Workers 端讀取 _speakers.json
+    let speakers = null;
+    try {
+      const spec = await fetch(`/api/jobs/${jobId}/speakers`);
+      if (spec.ok) speakers = await spec.json();
+    } catch {}
+
+    if (speakers && speakers.length) {
+      fields.innerHTML = speakers.map(s => `
+        <div style="margin-bottom:16px;">
+          <label style="color:#4fc3f7; font-size:13px; display:block; margin-bottom:6px;">發言者 ${s.label}</label>
+          <input type="text" id="spk_${s.label}" placeholder="例如：${s.label === 'A' ? '小明' : '阿輝'}" value="${s.label === 'A' ? '小明' : ''}" style="width:100%; background:#2a2a2a; border:1px solid #444; color:#e0e0e0; padding:10px 12px; border-radius:8px; box-sizing:border-box;">
+        </div>
+      `).join('');
+    } else {
+      // 抓到沒有 speaker 資料，給預設 A/B
+      fields.innerHTML = `
+        <div style="margin-bottom:16px;">
+          <label style="color:#4fc3f7; font-size:13px; display:block; margin-bottom:6px;">發言者 A</label>
+          <input type="text" id="spk_A" placeholder="例如：小明" value="" style="width:100%; background:#2a2a2a; border:1px solid #444; color:#e0e0e0; padding:10px 12px; border-radius:8px; box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="color:#4fc3f7; font-size:13px; display:block; margin-bottom:6px;">發言者 B</label>
+          <input type="text" id="spk_B" placeholder="例如：阿輝" value="" style="width:100%; background:#2a2a2a; border:1px solid #444; color:#e0e0e0; padding:10px 12px; border-radius:8px; box-sizing:border-box;">
+        </div>
+      `;
+    }
+  } catch (e) {
+    // 网络错误，用默认字段
+    fields.innerHTML = `
+      <div style="margin-bottom:16px;">
+        <label style="color:#4fc3f7; font-size:13px; display:block; margin-bottom:6px;">發言者 A</label>
+        <input type="text" id="spk_A" placeholder="例如：小明" value="" style="width:100%; background:#2a2a2a; border:1px solid #444; color:#e0e0e0; padding:10px 12px; border-radius:8px; box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="color:#4fc3f7; font-size:13px; display:block; margin-bottom:6px;">發言者 B</label>
+        <input type="text" id="spk_B" placeholder="例如：阿輝" value="" style="width:100%; background:#2a2a2a; border:1px solid #444; color:#e0e0e0; padding:10px 12px; border-radius:8px; box-sizing:border-box;">
+      </div>
+    `;
+  }
+}
+
+function closeSpeakerNamingModal() {
+  document.getElementById('speakerNamingModal').style.display = 'none';
+  currentNamingJobId = null;
+}
+
+async function submitSpeakerNaming() {
+  const inputs = document.querySelectorAll('#speakerNamingFields input');
+  const assignments = [];
+  inputs.forEach(inp => {
+    const label = inp.id.replace('spk_', '');
+    if (inp.value.trim()) assignments.push(`${label}=${inp.value.trim()}`);
+  });
+  if (!assignments.length) { alert('請至少填入一個名字'); return; }
+
+  const jobId = currentNamingJobId; // capture before closing
+  closeSpeakerNamingModal();
+
+  // 送到 Hermes 處理（在本頁 call API 由後端轉發）
+  try {
+    await fetch(`/api/jobs/${jobId}/speakers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignments: assignments.join(' ') }),
+    });
+    // 重新 polling，會在 completed 時顯示 Notion 連結
+    pollStatus(jobId);
+  } catch (e) {
+    alert('送出失敗，請重試');
+  }
+}
+
+// ==========================================
 // 狀態顯示
 // ==========================================
 function showStatus(job) {
@@ -843,6 +949,11 @@ async function pollStatus(jobId) {
         timeEl.innerHTML = job.notion_url
           ? `<a href="${job.notion_url}" target="_blank" class="link">📓 打開會議記錄</a>`
           : '完成';
+        return;
+      } else if (job.status === 'awaiting_speaker_naming') {
+        clearInterval(pollTimer);
+        el.textContent = '🎙️ 請確認發言者';
+        showSpeakerNamingModal(job.id, job.original_name || job.filename);
         return;
       } else if (job.status === 'failed') {
         el.textContent = '❌ 失敗';
@@ -999,6 +1110,39 @@ def api_fail_job(job_id):
     data = request.get_json() or {}
     update_job(job_id, status="failed", error=data.get("error"))
     return jsonify({"ok": True})
+
+@app.route("/api/jobs/<job_id>/speakers", methods=["GET"])
+def api_get_job_speakers(job_id):
+    """Hermes 讀取 job 的 speaker 資訊（for pending_speaker_naming 讀取）"""
+    # Render 上的 pending speaker naming 檔案目前存在 Worker 端
+    # 所以這個 endpoint 代理到 Worker 的檔案（如果有）
+    # 但實際上 Hermes 有自己的 pending_speaker_naming/ 目錄，
+    # 當 Worker 完成後会寫入 Hermes 本機，
+    # 所以 Hermes 直接讀本機的 pending_speaker_naming/ 即可。
+    # 這裡只回傳 job 本身資訊，讓 Hermes 自己對照
+    jobs = load_jobs()
+    job = next((j for j in jobs if j["id"] == job_id), None)
+    if not job:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(job)
+
+@app.route("/api/jobs/<job_id>/speakers", methods=["POST"])
+def api_submit_job_speakers(job_id):
+    """用戶在網頁 Modal 填完 speaker 名字後 POST 回來"""
+    data = request.get_json() or {}
+    assignments = data.get("assignments", "")  # "A=小明 B=阿輝"
+
+    # 更新 job 狀態，並把 assignments 寫入 job 資料
+    jobs = load_jobs()
+    idx = next((i for i, j in enumerate(jobs) if j["id"] == job_id), None)
+    if idx is None:
+        return jsonify({"error": "not found"}), 404
+
+    jobs[idx]["speaker_assignments"] = assignments
+    jobs[idx]["status"] = "speaker_naming_submitted"
+    save_jobs(jobs)
+
+    return jsonify({"ok": True, "assignments": assignments})
 
 @app.route("/api/jobs/<job_id>/reset", methods=["POST"])
 def api_reset_job(job_id):

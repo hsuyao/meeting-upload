@@ -236,15 +236,82 @@ def post_process(srt_path: Path, original_name: str, job_id: str, speakers_json_
 # 主循環
 # ==========================================
 
+def poll_speaker_named_jobs():
+    """輪詢等待 speaker naming 完成的 jobs（從 Render jobs API）"""
+    import requests as req
+
+    try:
+        r = req.get(f"{RENDER_BASE_URL}/api/jobs?status=speaker_naming_submitted", timeout=10)
+        if r.status_code != 200:
+            return []
+        return r.json()
+    except Exception as e:
+        print(f"[worker] 查詢 speaker_naming_submitted jobs 失敗: {e}")
+        return []
+
+def complete_with_speaker_naming(job_id: str, original_name: str, speaker_assignments: str):
+    """處理 speaker naming 完成後的 Notion 上傳"""
+    from post_srt_to_notion import post_process
+    from speaker_learning_only import speaker_learning_only
+
+    pending_file = Path(f"/home/eric/.hermes/profiles/meeting-note/pending_speaker_naming/{job_id}.json")
+
+    srt_path = None
+    if pending_file.exists():
+        data = json.loads(pending_file.read_text())
+        srt_path = Path(data["srt_path"])
+
+    if not srt_path or not srt_path.exists():
+        print(f"[worker] ❌ job {job_id}找不到 SRT，skip")
+        return
+
+    speakers_json = srt_path.parent / f"{srt_path.stem}_speakers.json"
+    wav_path = srt_path.parent / f"{srt_path.stem}_16k.wav"
+
+    # re-run speaker learning with assignments (更新 cache)
+    if speakers_json.exists() and wav_path.exists():
+        speaker_learning_only(srt_path, speakers_json, wav_path)
+
+    # 讀取 SRT + 生成 meeting note
+    notion_url = post_process(srt_path, original_name)
+
+    # 更新 pending 檔案
+    if pending_file.exists():
+        data = json.loads(pending_file.read_text())
+        data["notion_url"] = notion_url
+        data["speaker_assignments"] = speaker_assignments
+        pending_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    # 更新 Render job 狀態為 completed（用現有 endpoint）
+    mark_complete(job_id, notion_url=notion_url, status="completed")
+
+    print(f"[worker] ✅ job {job_id} 完成，Notion: {notion_url}")
+    send_telegram(f"✅ 會議記錄已完成\n{original_name}\n📓 {notion_url}")
+
+
 def main():
     print(f"[worker] 啟動，poll interval={POLL_INTERVAL}s")
     print(f"[worker] Render URL: {RENDER_BASE_URL}")
 
     while True:
         try:
+            # Phase 1: 處理 pending jobs（音頻下載、Mac 處理、等待 speaker naming）
             jobs = get_pending_jobs()
             if not jobs:
-                print(f"[worker] {datetime.now().strftime('%H:%M:%S')} — 無 pending jobs，sleep {POLL_INTERVAL}s")
+                # Phase 2: 檢查是否有 speaker naming 完成的 job
+                named_jobs = poll_speaker_named_jobs()
+                for job in named_jobs:
+                    job_id = job["id"]
+                    assignments = job.get("speaker_assignments", "")
+                    if not assignments:
+                        continue
+                    print(f"\n[worker] Phase2: 處理 speaker naming 完成 {job_id}")
+                    try:
+                        complete_with_speaker_naming(job_id, job.get("original_name", ""), assignments)
+                    except Exception as e:
+                        print(f"[worker] Phase2 job {job_id} 失敗: {e}")
+                if named_jobs:
+                    print(f"[worker] {datetime.now().strftime('%H:%M:%S')} — Phase2 处理 {len(named_jobs)} jobs")
                 time.sleep(POLL_INTERVAL)
                 continue
 
@@ -252,7 +319,7 @@ def main():
                 job_id = job["id"]
                 filename = job.get("filename", "")
                 original_name = job.get("original_name", filename)
-                print(f"\n[worker] 处理 job {job_id}: {original_name}")
+                print(f"\n[worker] Phase1 处理 job {job_id}: {original_name}")
 
                 try:
                     mark_processing(job_id)
