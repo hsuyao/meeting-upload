@@ -251,9 +251,6 @@ def poll_speaker_named_jobs():
 
 def complete_with_speaker_naming(job_id: str, original_name: str, speaker_assignments: str):
     """處理 speaker naming 完成後的 Notion 上傳"""
-    from post_srt_to_notion import post_process
-    from speaker_learning_only import speaker_learning_only
-
     pending_file = Path(f"/home/eric/.hermes/profiles/meeting-note/pending_speaker_naming/{job_id}.json")
 
     srt_path = None
@@ -270,10 +267,23 @@ def complete_with_speaker_naming(job_id: str, original_name: str, speaker_assign
 
     # re-run speaker learning with assignments (更新 cache)
     if speakers_json.exists() and wav_path.exists():
-        speaker_learning_only(srt_path, speakers_json, wav_path)
+        script_speaker = Path("/home/eric/.hermes/profiles/meeting-note/scripts/speaker_learning_only.py")
+        if script_speaker.exists():
+            subprocess.run(["python3", str(script_speaker), str(srt_path), str(speakers_json), str(wav_path)],
+                           capture_output=True, timeout=60)
 
-    # 讀取 SRT + 生成 meeting note
-    notion_url = post_process(srt_path, original_name)
+    # 讀取 SRT + 生成 meeting note（呼叫 Hermes 的 post_srt_to_notion.py）
+    script_notion = Path("/home/eric/.hermes/profiles/meeting-note/scripts/post_srt_to_notion.py")
+    result = subprocess.run(
+        ["python3", str(script_notion), str(srt_path), original_name],
+        capture_output=True, text=True, timeout=300
+    )
+    notion_url = ""
+    for line in result.stdout.split('\n'):
+        urls = re.findall(r'https://www\.notion\.so/[^\s]+', line)
+        if urls:
+            notion_url = urls[0]
+            break
 
     # 更新 pending 檔案
     if pending_file.exists():
