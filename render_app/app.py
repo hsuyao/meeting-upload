@@ -231,7 +231,9 @@ INDEX_HTML = """
   }
   .record-btn:hover { transform: scale(1.05); background: #f44336; }
   .record-btn.recording { background: #555; box-shadow: 0 0 0 8px rgba(229,57,53,0.3); animation: pulse 1s infinite; }
+  .record-btn.recording:hover { transform: scale(1.05); background: #666; }
   .record-btn:disabled { background: #555; cursor: not-allowed; transform: none; }
+  .record-btn.paused { background: #ff9800; animation: none; box-shadow: 0 4px 20px rgba(255,152,0,0.4); }
 
   @keyframes pulse {
     0%, 100% { box-shadow: 0 0 0 8px rgba(229,57,53,0.3); }
@@ -410,6 +412,7 @@ window.fetch = function(url, opts = {}) {
     <!-- 錄音區 -->
     <div style="text-align:center; margin-top: 32px;">
       <button class="record-btn" id="recBtn" onclick="toggleRecording()">🎤 開始錄音</button>
+      <button class="record-btn" id="stopBtn" onclick="stopRecording()" style="display:none; background:#555; margin-top:12px;">⏹ 結束錄音</button>
       <div class="timer" id="timer">00:00</div>
       <canvas id="waveform"></canvas>
       <p class="hint" id="recHint">點擊開始錄音</p>
@@ -451,6 +454,7 @@ window.fetch = function(url, opts = {}) {
     <div class="panel-left">
       <h2 style="color:#4fc3f7; font-weight:300; font-size:24px;">🎤 錄音</h2>
       <button class="record-btn" id="recBtnD" onclick="toggleRecording()">🎤 開始錄音</button>
+      <button class="record-btn" id="stopBtnD" onclick="stopRecording()" style="display:none; background:#555; margin-top:12px;">⏹ 結束錄音</button>
       <div class="timer" id="timerD">00:00</div>
       <canvas id="waveformD"></canvas>
       <p class="hint" id="recHintD">點擊開始錄音</p>
@@ -487,18 +491,23 @@ window.fetch = function(url, opts = {}) {
 // ==========================================
 // 錄音
 // ==========================================
+let isRecording = false;
+let isPaused = false;
 let mediaRecorder = null;
 let audioChunks = [];
 let startTime = null;
 let timerInterval = null;
-let isRecording = false;
+let pausedElapsed = 0; // 總暫停時間（毫秒）
+let pauseStartTime = null;
 
 async function toggleRecording() {
-  const btn = document.getElementById('recBtn') || document.getElementById('recBtnD');
-  const timer = document.getElementById('timer') || document.getElementById('timerD');
-  const hint = document.getElementById('recHint') || document.getElementById('recHintD');
+  const suffix = window.innerWidth > 640 ? 'D' : '';
+  const btn = document.getElementById('recBtn' + suffix);
+  const timer = document.getElementById('timer' + suffix);
+  const hint = document.getElementById('recHint' + suffix);
 
   if (!isRecording) {
+    // 開始錄音
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorder = new MediaRecorder(stream);
@@ -508,11 +517,12 @@ async function toggleRecording() {
       mediaRecorder.onstop = async () => {
         const blob = new Blob(audioChunks, { type: 'audio/webm' });
         stream.getTracks().forEach(t => t.stop());
-        const duration = Math.floor((Date.now() - startTime) / 1000);
+        const totalMs = Date.now() - startTime - pausedElapsed;
+        const duration = Math.floor(totalMs / 1000);
         if (duration < 60) {
-          alert('錄音太短（' + duration + '秒），請至少錄製 1 分鐘');
-          document.getElementById('recHint') && (document.getElementById('recHint').textContent = '錄音太短');
-          document.getElementById('recHintD') && (document.getElementById('recHintD').textContent = '錄音太短');
+          const msg = '錄音太短（' + duration + '秒），請至少錄製 1 分鐘';
+          alert(msg);
+          if (hint) hint.textContent = '錄音太短';
           return;
         }
         await uploadAudio(blob, 'recorded.webm');
@@ -520,33 +530,76 @@ async function toggleRecording() {
 
       mediaRecorder.start();
       isRecording = true;
-      btn.classList.add('recording');
-      btn.textContent = '⏹ 停止';
-      timer.classList.add('recording');
-      hint.textContent = '錄音中...';
+      isPaused = false;
+      pausedElapsed = 0;
       startTime = Date.now();
+      btn.classList.add('recording');
+      btn.textContent = '⏸ 暫停';
+      document.getElementById('stopBtn' + suffix).style.display = 'inline-block';
+      timer.classList.add('recording');
+      if (hint) hint.textContent = '錄音中...';
 
       timerInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const elapsed = Math.floor((Date.now() - startTime - pausedElapsed) / 1000);
         const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
         const s = String(elapsed % 60).padStart(2, '0');
         timer.textContent = `${m}:${s}`;
       }, 1000);
 
-      // 視覺化波形
       setupWaveform(stream);
     } catch (e) {
       alert('無法取得麥克風權限：' + e.message);
     }
-  } else {
-    mediaRecorder.stop();
-    isRecording = false;
-    btn.classList.remove('recording');
-    btn.textContent = '🎤 開始錄音';
+  } else if (!isPaused) {
+    // 暫停
+    mediaRecorder.pause();
+    isPaused = true;
+    pauseStartTime = Date.now();
+    btn.textContent = '▶ 繼續';
+    btn.classList.add('paused');
+    if (hint) hint.textContent = '已暫停';
     timer.classList.remove('recording');
-    hint.textContent = '處理中...';
     clearInterval(timerInterval);
+  } else {
+    // 繼續
+    mediaRecorder.resume();
+    pausedElapsed += Date.now() - pauseStartTime;
+    isPaused = false;
+    btn.textContent = '⏸ 暫停';
+    btn.classList.remove('paused');
+    if (hint) hint.textContent = '錄音中...';
+    timer.classList.add('recording');
+
+    timerInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime - pausedElapsed) / 1000);
+      const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const s = String(elapsed % 60).padStart(2, '0');
+      timer.textContent = `${m}:${s}`;
+    }, 1000);
   }
+}
+
+function stopRecording() {
+  if (!isRecording) return;
+  if (isPaused) {
+    // 從暫停狀態直接停止
+    pausedElapsed += Date.now() - pauseStartTime;
+  }
+  isRecording = false;
+  isPaused = false;
+  clearInterval(timerInterval);
+  mediaRecorder.stop();
+
+  const suffix = window.innerWidth > 640 ? 'D' : '';
+  const btn = document.getElementById('recBtn' + suffix);
+  btn.classList.remove('paused');
+  const timer = document.getElementById('timer' + suffix);
+  const hint = document.getElementById('recHint' + suffix);
+  btn.classList.remove('recording');
+  btn.textContent = '🎤 開始錄音';
+  document.getElementById('stopBtn' + suffix).style.display = 'none';
+  timer.classList.remove('recording');
+  if (hint) hint.textContent = '處理中...';
 }
 
 function setupWaveform(stream) {
@@ -850,57 +903,60 @@ logger = logging.getLogger(__name__)
 @app.route("/api/jobs", methods=["POST"])
 def api_create_job():
     """新建 job，接收音頻檔案"""
-    t0 = time.time()
-    logger.info(f"[UPLOAD] request started")
-    logger.info(f"[UPLOAD] headers: {dict(request.headers)}")
-    if not check_password():
-        return jsonify({"error": "需要密碼"}), 401
-    if 'audio' not in request.files:
-        return jsonify({"error": "no audio"}), 400
-
-    logger.info(f"[UPLOAD] auth passed")
-    audio = request.files['audio']
-    ext = audio.filename.split('.')[-1] if '.' in audio.filename else 'webm'
-    job_id = str(uuid.uuid4())[:8]
-    saved_name = f"{job_id}.{ext}"
-    save_path = UPLOAD_DIR / saved_name
-    tmp_path = save_path.with_suffix('.tmp')
-    logger.info(f"[UPLOAD] filename={saved_name}, size_hint={audio.content_length}")
-    # 直接在 request 生命週期內讀完，避免 WSGI stream 關閉問題
     try:
-        audio.stream.seek(0)
-        file_data = audio.stream.read()
-        with open(tmp_path, 'wb', buffering=131072) as f:
-            f.write(file_data)
-        shutil.move(str(tmp_path), str(save_path))
-        logger.info(f"[UPLOAD] write done, moved ({len(file_data)} bytes)")
-    except Exception as e:
-        logger.error(f"[UPLOAD] write failed: {e}", exc_info=True)
-        return jsonify({"error": "上傳失敗", "detail": str(e)}), 500
-    logger.info(f"[UPLOAD] write complete ({(time.time()-t0)*1000:.0f}ms total)")
+        t0 = time.time()
+        logger.info(f"[UPLOAD] request started")
+        logger.info(f"[UPLOAD] headers: {dict(request.headers)}")
+        if not check_password():
+            return jsonify({"error": "需要密碼"}), 401
+        if 'audio' not in request.files:
+            return jsonify({"error": "no audio"}), 400
 
-    try:
-        job = create_job(saved_name, source="upload")
-        job["original_name"] = request.form.get("original_name", audio.filename)
-        # 立即更新 jobs.json
-        jobs = load_jobs()
-        for j in jobs:
-            if j["id"] == job["id"]:
-                j["original_name"] = job["original_name"]
-                break
-        save_jobs(jobs)
+        logger.info(f"[UPLOAD] auth passed")
+        audio = request.files['audio']
+        ext = audio.filename.split('.')[-1] if '.' in audio.filename else 'webm'
+        job_id = str(uuid.uuid4())[:8]
+        saved_name = f"{job_id}.{ext}"
+        save_path = UPLOAD_DIR / saved_name
+        tmp_path = save_path.with_suffix('.tmp')
+        logger.info(f"[UPLOAD] filename={saved_name}, size_hint={audio.content_length}")
+        try:
+            audio.stream.seek(0)
+            file_data = audio.stream.read()
+            with open(tmp_path, 'wb', buffering=131072) as f:
+                f.write(file_data)
+            shutil.move(str(tmp_path), str(save_path))
+            logger.info(f"[UPLOAD] write done, moved ({len(file_data)} bytes)")
+        except Exception as e:
+            import traceback
+            logger.error(f"[UPLOAD] write failed: {e}\n{traceback.format_exc()}")
+            return jsonify({"error": "上傳失敗", "detail": str(type(e).__name__)}), 500
+        logger.info(f"[UPLOAD] write complete ({(time.time()-t0)*1000:.0f}ms total)")
+
+        try:
+            job = create_job(saved_name, source="upload")
+            job["original_name"] = request.form.get("original_name", audio.filename)
+            jobs = load_jobs()
+            for j in jobs:
+                if j["id"] == job["id"]:
+                    j["original_name"] = job["original_name"]
+                    break
+            save_jobs(jobs)
+        except Exception as e:
+            import traceback
+            logger.error(f"[UPLOAD] job/create/save failed: {e}\n{traceback.format_exc()}")
+            try:
+                if save_path.exists():
+                    save_path.unlink()
+            except:
+                pass
+            return jsonify({"error": "上傳失敗", "detail": str(type(e).__name__)}), 500
+
+        return jsonify(job), 200
     except Exception as e:
         import traceback
-        logger.error(f"[UPLOAD] job/create/save failed: {e}\n{traceback.format_exc()}")
-        # 檔案已寫入，但 job 建立失敗，尝试删除
-        try:
-            if save_path.exists():
-                save_path.unlink()
-        except:
-            pass
+        logger.error(f"[UPLOAD] top-level exception: {e}\n{traceback.format_exc()}")
         return jsonify({"error": "上傳失敗", "detail": str(type(e).__name__)}), 500
-
-    return jsonify(job), 200
 
 @app.route("/api/jobs", methods=["GET"])
 def api_list_jobs():
@@ -931,7 +987,7 @@ def api_complete_job(job_id):
     """Worker 完成後呼叫，標記完成"""
     data = request.get_json() or {}
     update_job(job_id,
-        status="completed",
+        status=data.get("status", "completed"),
         completed_at=datetime.now().isoformat(),
         notion_url=data.get("notion_url"),
         error=data.get("error")

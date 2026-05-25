@@ -122,12 +122,12 @@ def mark_processing(job_id: str):
     except:
         pass
 
-def mark_complete(job_id: str, notion_url: str = "", error: str = ""):
+def mark_complete(job_id: str, notion_url: str = "", error: str = "", status: str = "completed"):
     try:
         requests.post(
             f"{RENDER_BASE_URL}/api/jobs/{job_id}/complete",
             headers=auth_headers(),
-            json={"notion_url": notion_url, "error": error},
+            json={"notion_url": notion_url, "error": error, "status": status},
             timeout=10
         )
     except Exception as e:
@@ -177,33 +177,45 @@ def process_on_mac(audio_path: Path, job_id: str) -> Path:
     output = ssh_execute(ssh_cmd)
     print(f"[worker] Mac 輸出長度: {len(output)}")
 
-    # Step 3: 下載 SRT
+    # Step 3: 下載 SRT + _speakers.json + WAV
     local_srt = SRT_OUTPUT_DIR / f"{job_id}.srt"
+    local_speakers_json = SRT_OUTPUT_DIR / f"{job_id}_speakers.json"
+    local_wav = SRT_OUTPUT_DIR / f"{job_id}_16k.wav"
+    mac_speakers_json = mac_output_srt.replace('.srt', '_speakers.json')
+    mac_wav = f"/tmp/{job_id}_{filename.replace('.', '_')}._16k.wav"
+
+    for remote, local in [(mac_output_srt, local_srt), (mac_speakers_json, local_speakers_json)]:
+        subprocess.run([
+            "scp", "-o", "StrictHostKeyChecking=no",
+            f"{MAC_HOST}:{remote}", str(local)
+        ], capture_output=True, timeout=60)
+
+    # 下載 WAV（用於 voice hash）
     subprocess.run([
         "scp", "-o", "StrictHostKeyChecking=no",
-        f"{MAC_HOST}:{mac_output_srt}",
-        str(local_srt)
+        f"{MAC_HOST}:{mac_wav}", str(local_wav)
     ], capture_output=True, timeout=60)
 
     if not local_srt.exists():
         raise RuntimeError(f"SRT 未生成: {mac_output_srt}")
 
-    print(f"[worker] SRT 已下載: {local_srt}")
-    return local_srt
+    return local_srt, local_speakers_json, local_wav
 
 # ==========================================
 # 後處理：post_srt_to_notion.py
 # ==========================================
 
-def post_process(srt_path: Path, original_name: str, job_id: str, audio_path: Path = None):
+def post_process(srt_path: Path, original_name: str, job_id: str, speakers_json_path: Path = None, wav_path: Path = None):
     script = Path("/home/eric/.hermes/profiles/meeting-note/scripts/post_srt_to_notion.py")
     cmd = [
         "python3", str(script),
         str(srt_path),
         original_name,
     ]
-    if audio_path:
-        cmd.append(str(audio_path))
+    if speakers_json_path:
+        cmd.append(str(speakers_json_path))
+    if wav_path:
+        cmd.append(str(wav_path))
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     print(f"[post_srt] stdout: {result.stdout[:500]}")
@@ -247,11 +259,32 @@ def main():
                     print(f"[worker] 下載音頻...")
                     audio_path = download_audio(job_id, filename)
                     print(f"[worker] 送到 Mac 處理...")
-                    srt_path = process_on_mac(audio_path, job_id)
-                    notion_url = post_process(srt_path, original_name, job_id, audio_path)
-                    mark_complete(job_id, notion_url=notion_url)
+                    srt_path, speakers_json_path, wav_path = process_on_mac(audio_path, job_id)
+
+                    # 只做 learning，不上 Notion
+                    from speaker_learning_only import speaker_learning_only
+                    speaker_learning_only(srt_path, speakers_json_path, wav_path)
+
+                    # 寫入 pending 檔案，等你回覆 speaker 名字
+                    pending_file = Path(f"/home/eric/.hermes/profiles/meeting-note/pending_speaker_naming/{job_id}.json")
+                    pending_file.parent.mkdir(parents=True, exist_ok=True)
+                    pending_file.write_text(json.dumps({
+                        "job_id": job_id,
+                        "original_name": original_name,
+                        "srt_path": str(srt_path),
+                        "speakers_json_path": str(speakers_json_path),
+                        "wav_path": str(wav_path),
+                        "notion_url": "",  # 等待命名後補上
+                    }, ensure_ascii=False), encoding="utf-8")
+
+                    mark_complete(job_id, notion_url="", status="awaiting_speaker_naming")
                     audio_path.unlink(missing_ok=True)
-                    print(f"[worker] ✅ job {job_id} 完成")
+                    print(f"[worker] ✅ job {job_id} 完成（等待 speaker naming）")
+                    send_telegram(
+                        f"🎙️ 會議處理完成\n{original_name}\n"
+                        f"請回覆發言者名字，格式：\n"
+                        f"A=小明 B=阿輝"
+                    )
 
                 except Exception as e:
                     print(f"[worker] ❌ job {job_id} 失敗: {e}")
