@@ -852,6 +852,7 @@ def api_create_job():
     """新建 job，接收音頻檔案"""
     t0 = time.time()
     logger.info(f"[UPLOAD] request started")
+    logger.info(f"[UPLOAD] headers: {dict(request.headers)}")
     if not check_password():
         return jsonify({"error": "需要密碼"}), 401
     if 'audio' not in request.files:
