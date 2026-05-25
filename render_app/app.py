@@ -951,9 +951,9 @@ async function pollStatus(jobId) {
           : '完成';
         return;
       } else if (job.status === 'awaiting_speaker_naming') {
-        clearInterval(pollTimer);
         el.textContent = '🎙️ 請確認發言者';
-        showSpeakerNamingModal(job.id, job.original_name || job.filename);
+        const timeEl = document.getElementById(timeId);
+        timeEl.innerHTML = `<span style="color:#aaa; font-size:13px;">語音辨識完成，請</span> <button onclick="showSpeakerNamingModal('${job.id}', '${(job.original_name || job.filename).replace(/'/g, "\\'")}')" style="background:#4fc3f7; border:none; color:#111; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">✏️ 設定發言者</button>`;
         return;
       } else if (job.status === 'failed') {
         el.textContent = '❌ 失敗';
