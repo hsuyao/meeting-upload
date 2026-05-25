@@ -862,6 +862,7 @@ def api_create_job():
     job_id = str(uuid.uuid4())[:8]
     saved_name = f"{job_id}.{ext}"
     save_path = UPLOAD_DIR / saved_name
+    tmp_path = save_path.with_suffix('.tmp')
     logger.info(f"[UPLOAD] filename={saved_name}, size_hint={audio.content_length}")
     # 直接在 request 生命週期內讀完，避免 WSGI stream 關閉問題
     try:
