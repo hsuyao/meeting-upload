@@ -19,6 +19,10 @@ from datetime import datetime
 # 設定
 # ==========================================
 
+# 將 Hermes scripts 目錄加入路徑（給 speaker_learning_only, post_srt_to_notion 等用）
+SCRIPTS_DIR = Path("/home/eric/.hermes/profiles/meeting-note/scripts")
+sys.path.insert(0, str(SCRIPTS_DIR))
+
 RENDER_BASE_URL = os.environ.get("RENDER_BASE_URL", "https://meeting-upload-xxx.onrender.com")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 POLL_INTERVAL = 120  # 秒
