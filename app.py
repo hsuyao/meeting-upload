@@ -231,6 +231,9 @@ INDEX_HTML = """
   }
   .record-btn:hover { transform: scale(1.05); background: #f44336; }
   .record-btn.recording { background: #555; box-shadow: 0 0 0 8px rgba(229,57,53,0.3); animation: pulse 1s infinite; }
+  .record-btn.recording:hover { transform: scale(1.05); background: #666; }
+  .record-btn.paused { background: #ff9800; animation: none; box-shadow: 0 4px 20px rgba(255,152,0,0.4); }
+  .record-btn.paused:hover { transform: scale(1.05); background: #ff9800; }
   .record-btn:disabled { background: #555; cursor: not-allowed; transform: none; }
 
   @keyframes pulse {
@@ -410,6 +413,7 @@ window.fetch = function(url, opts = {}) {
     <!-- 錄音區 -->
     <div style="text-align:center; margin-top: 32px;">
       <button class="record-btn" id="recBtn" onclick="toggleRecording()">🎤 開始錄音</button>
+      <button class="record-btn" id="stopBtn" onclick="stopRecording()" style="display:none; background:#555; margin-top:12px;">⏹ 結束錄音</button>
       <div class="timer" id="timer">00:00</div>
       <canvas id="waveform"></canvas>
       <p class="hint" id="recHint">點擊開始錄音</p>
@@ -451,6 +455,7 @@ window.fetch = function(url, opts = {}) {
     <div class="panel-left">
       <h2 style="color:#4fc3f7; font-weight:300; font-size:24px;">🎤 錄音</h2>
       <button class="record-btn" id="recBtnD" onclick="toggleRecording()">🎤 開始錄音</button>
+      <button class="record-btn" id="stopBtnD" onclick="stopRecording()" style="display:none; background:#555; margin-top:12px;">⏹ 結束錄音</button>
       <div class="timer" id="timerD">00:00</div>
       <canvas id="waveformD"></canvas>
       <p class="hint" id="recHintD">點擊開始錄音</p>
@@ -487,16 +492,20 @@ window.fetch = function(url, opts = {}) {
 // ==========================================
 // 錄音
 // ==========================================
+let isRecording = false;
+let isPaused = false;
 let mediaRecorder = null;
 let audioChunks = [];
 let startTime = null;
 let timerInterval = null;
-let isRecording = false;
+let pausedElapsed = 0;
+let pauseStartTime = null;
 
 async function toggleRecording() {
-  const btn = document.getElementById('recBtn') || document.getElementById('recBtnD');
-  const timer = document.getElementById('timer') || document.getElementById('timerD');
-  const hint = document.getElementById('recHint') || document.getElementById('recHintD');
+  const suffix = window.innerWidth > 640 ? 'D' : '';
+  const btn = document.getElementById('recBtn' + suffix);
+  const timer = document.getElementById('timer' + suffix);
+  const hint = document.getElementById('recHint' + suffix);
 
   if (!isRecording) {
     try {
@@ -508,11 +517,12 @@ async function toggleRecording() {
       mediaRecorder.onstop = async () => {
         const blob = new Blob(audioChunks, { type: 'audio/webm' });
         stream.getTracks().forEach(t => t.stop());
-        const duration = Math.floor((Date.now() - startTime) / 1000);
+        const totalMs = Date.now() - startTime - pausedElapsed;
+        const duration = Math.floor(totalMs / 1000);
         if (duration < 60) {
-          alert('錄音太短（' + duration + '秒），請至少錄製 1 分鐘');
-          document.getElementById('recHint') && (document.getElementById('recHint').textContent = '錄音太短');
-          document.getElementById('recHintD') && (document.getElementById('recHintD').textContent = '錄音太短');
+          const msg = '錄音太短（' + duration + '秒），請至少錄製 1 分鐘';
+          alert(msg);
+          if (hint) hint.textContent = '錄音太短';
           return;
         }
         await uploadAudio(blob, 'recorded.webm');
@@ -520,33 +530,75 @@ async function toggleRecording() {
 
       mediaRecorder.start();
       isRecording = true;
-      btn.classList.add('recording');
-      btn.textContent = '⏹ 停止';
-      timer.classList.add('recording');
-      hint.textContent = '錄音中...';
+      isPaused = false;
+      pausedElapsed = 0;
       startTime = Date.now();
+      btn.classList.add('recording');
+      btn.textContent = '⏸ 暫停';
+      document.getElementById('stopBtn' + suffix).style.display = 'inline-block';
+      timer.classList.add('recording');
+      if (hint) hint.textContent = '錄音中...';
 
       timerInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const elapsed = Math.floor((Date.now() - startTime - pausedElapsed) / 1000);
         const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
         const s = String(elapsed % 60).padStart(2, '0');
         timer.textContent = `${m}:${s}`;
       }, 1000);
 
-      // 視覺化波形
       setupWaveform(stream);
     } catch (e) {
       alert('無法取得麥克風權限：' + e.message);
     }
-  } else {
-    mediaRecorder.stop();
-    isRecording = false;
-    btn.classList.remove('recording');
-    btn.textContent = '🎤 開始錄音';
+  } else if (!isPaused) {
+    // 暫停
+    mediaRecorder.pause();
+    isPaused = true;
+    pauseStartTime = Date.now();
+    btn.textContent = '▶ 繼續';
+    btn.classList.add('paused');
+    if (hint) hint.textContent = '已暫停';
     timer.classList.remove('recording');
-    hint.textContent = '處理中...';
     clearInterval(timerInterval);
+  } else {
+    // 繼續
+    mediaRecorder.resume();
+    pausedElapsed += Date.now() - pauseStartTime;
+    isPaused = false;
+    btn.textContent = '⏸ 暫停';
+    btn.classList.remove('paused');
+    if (hint) hint.textContent = '錄音中...';
+    timer.classList.add('recording');
+
+    timerInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime - pausedElapsed) / 1000);
+      const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const s = String(elapsed % 60).padStart(2, '0');
+      timer.textContent = `${m}:${s}`;
+    }, 1000);
   }
+}
+
+function stopRecording() {
+  if (!isRecording) return;
+  if (isPaused) {
+    pausedElapsed += Date.now() - pauseStartTime;
+  }
+  isRecording = false;
+  isPaused = false;
+  clearInterval(timerInterval);
+  mediaRecorder.stop();
+
+  const suffix = window.innerWidth > 640 ? 'D' : '';
+  const btn = document.getElementById('recBtn' + suffix);
+  btn.classList.remove('paused');
+  const timer = document.getElementById('timer' + suffix);
+  const hint = document.getElementById('recHint' + suffix);
+  btn.classList.remove('recording');
+  btn.textContent = '🎤 開始錄音';
+  document.getElementById('stopBtn' + suffix).style.display = 'none';
+  timer.classList.remove('recording');
+  if (hint) hint.textContent = '處理中...';
 }
 
 function setupWaveform(stream) {
