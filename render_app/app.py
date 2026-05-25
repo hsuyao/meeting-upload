@@ -66,6 +66,9 @@ def load_users():
 
 USERS = load_users()
 
+# 不需要密碼的路徑
+PUBLIC_PATHS = {"/health", "/api/jobs", "/"}
+
 def check_password():
     """檢查 X-App-Password header，比對 bcrypt hash"""
     if request.path in PUBLIC_PATHS:
