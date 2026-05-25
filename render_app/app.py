@@ -873,8 +873,8 @@ def api_create_job():
         shutil.move(str(tmp_path), str(save_path))
         logger.info(f"[UPLOAD] write done, moved ({len(file_data)} bytes)")
     except Exception as e:
-        logger.error(f"[UPLOAD] write failed: {e}")
-        return jsonify({"error": "上傳失敗"}), 500
+        logger.error(f"[UPLOAD] write failed: {e}", exc_info=True)
+        return jsonify({"error": "上傳失敗", "detail": str(e)}), 500
     logger.info(f"[UPLOAD] write complete ({(time.time()-t0)*1000:.0f}ms total)")
 
     job = create_job(saved_name, source="upload")
