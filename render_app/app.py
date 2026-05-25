@@ -1097,9 +1097,10 @@ def api_processing_job(job_id):
 def api_complete_job(job_id):
     """Worker 完成後呼叫，標記完成"""
     data = request.get_json() or {}
+    incoming_status = data.get("status", "completed")
     update_job(job_id,
-        status=data.get("status", "completed"),
-        completed_at=datetime.now().isoformat(),
+        status=incoming_status,
+        completed_at=datetime.now().isoformat() if incoming_status in ("completed", "failed") else None,
         notion_url=data.get("notion_url"),
         error=data.get("error")
     )
