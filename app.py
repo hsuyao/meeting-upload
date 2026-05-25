@@ -9,6 +9,7 @@ import os
 import uuid
 import json
 import logging
+import shutil
 import bcrypt
 from datetime import datetime
 from pathlib import Path
