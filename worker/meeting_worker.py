@@ -160,10 +160,25 @@ def download_audio(job_id: str, filename: str) -> Path:
 # Mac 處理
 # ==========================================
 
-def process_on_mac(audio_path: Path, job_id: str) -> Path:
+def _clean_filename(name: str) -> str:
+    """移除檔名中的特殊字元，保留中文、英文、數字、底線、連字符、句點"""
+    import re
+    # 只留：中文、英文、數字、_ - .
+    name = re.sub(r'[^\w\u4e00-\u9fff.\-]', '_', name)
+    # 移除連續底線
+    name = re.sub(r'_+', '_', name)
+    # 移除首尾底線、連字符
+    name = name.strip('_-')
+    if not name:
+        name = "meeting"
+    return name
+
+
+def process_on_mac(audio_path: Path, job_id: str, original_name: str) -> tuple[Path, Path, Path]:
+    clean_name = _clean_filename(Path(original_name).stem)
     filename = audio_path.name
     mac_input_path = f"/tmp/{job_id}_{filename}"
-    mac_output_srt = f"/Users/erichy_tsai/whisperx/output/{job_id}.srt"
+    mac_output_srt = f"/Users/erichy_tsai/whisperx/output/{clean_name}.srt"
 
     # Step 1: 上傳到 Mac
     print(f"[worker] 上傳 {audio_path} → Mac {mac_input_path}")
@@ -181,10 +196,10 @@ def process_on_mac(audio_path: Path, job_id: str) -> Path:
     output = ssh_execute(ssh_cmd)
     print(f"[worker] Mac 輸出長度: {len(output)}")
 
-    # Step 3: 下載 SRT + _speakers.json + WAV
-    local_srt = SRT_OUTPUT_DIR / f"{job_id}.srt"
-    local_speakers_json = SRT_OUTPUT_DIR / f"{job_id}_speakers.json"
-    local_wav = SRT_OUTPUT_DIR / f"{job_id}_16k.wav"
+    # Step 3: 下載 SRT + _speakers.json + WAV（使用 clean name）
+    local_srt = SRT_OUTPUT_DIR / f"{clean_name}.srt"
+    local_speakers_json = SRT_OUTPUT_DIR / f"{clean_name}_speakers.json"
+    local_wav = SRT_OUTPUT_DIR / f"{clean_name}_16k.wav"
     mac_speakers_json = mac_output_srt.replace('.srt', '_speakers.json')
     mac_wav = f"/tmp/{job_id}_{filename.replace('.', '_')}._16k.wav"
 
@@ -340,7 +355,7 @@ def main():
                     print(f"[worker] 下載音頻...")
                     audio_path = download_audio(job_id, filename)
                     print(f"[worker] 送到 Mac 處理...")
-                    srt_path, speakers_json_path, wav_path = process_on_mac(audio_path, job_id)
+                    srt_path, speakers_json_path, wav_path = process_on_mac(audio_path, job_id, original_name)
 
                     # 只做 learning，不上 Notion
                     from speaker_learning_only import speaker_learning_only

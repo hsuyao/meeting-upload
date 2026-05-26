@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+*.m4a
+tmp/
+.env
+*.egg-info/
+.Python
