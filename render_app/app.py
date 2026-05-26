@@ -127,20 +127,17 @@ def enforce_password():
         return resp
 
 # ==========================================
-# Job 管理
+# Job 管理（使用 Notion Database，local fallback）
 # ==========================================
 
-def load_jobs():
-    if JOBS_FILE.exists():
-        try:
-            return json.loads(JOBS_FILE.read_text())
-        except Exception:
-            return []
-    return []
+from notion_client import load_jobs, create_job as nc_create_job, update_job as nc_update_job, get_job as nc_get_job
 
+# Keep old save_jobs signature for compatibility
 def save_jobs(jobs):
-    JOBS_FILE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2))
+    """save_jobs 已被廢除，資料直接寫入 Notion"""
+    pass
 
+# Alias old create_job to notion_client
 def create_job(audio_filename: str, source: str = "upload") -> dict:
     """建立新 job，回傳 job dict"""
     job_id = str(uuid.uuid4())[:8]
@@ -155,19 +152,11 @@ def create_job(audio_filename: str, source: str = "upload") -> dict:
         "error": None,
         "original_name": request.form.get("original_name", audio_filename),
     }
-    jobs = load_jobs()
-    jobs.append(job)
-    save_jobs(jobs)
-    return job
+    return nc_create_job(job)
 
 def update_job(job_id: str, **kwargs):
     """更新 job 狀態/欄位"""
-    jobs = load_jobs()
-    for job in jobs:
-        if job["id"] == job_id:
-            job.update(kwargs)
-            break
-    save_jobs(jobs)
+    nc_update_job(job_id, **kwargs)
 
 # ==========================================
 # HTML 介面
